@@ -9,7 +9,6 @@ class OverlayCanvas(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setFixedSize(SCREEN_SIZE[0], SCREEN_SIZE[1])
         
         # Multiple Layers: One for each tool that needs persistence
         self.layers = {
@@ -50,4 +49,5 @@ class OverlayCanvas(QWidget):
         for layer_name in ["PAINTER", "PAINTER_ALT"]:
             layer = self.layers[layer_name]
             qi = QImage(layer.data, w, h, w * 4, QImage.Format_RGBA8888)
-            painter.drawImage(0, 0, qi)
+            # Scale the fixed-size layer to the current widget size
+            painter.drawImage(self.rect(), qi)

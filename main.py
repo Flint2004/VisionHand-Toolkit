@@ -19,15 +19,24 @@ class AudienceWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("AI Virtual Painter - Audience View")
-        self.setFixedSize(SCREEN_SIZE[0], SCREEN_SIZE[1])
+        self.resize(SCREEN_SIZE[0], SCREEN_SIZE[1])
         self.label = QLabel(self)
+        self.label.setScaledContents(True)
+
+    def resizeEvent(self, event):
+        # Lock 16:9 Aspect Ratio
+        w = event.size().width()
+        h = int(w * 9 / 16)
+        if h != event.size().height():
+            self.resize(w, h)
         self.label.setFixedSize(self.size())
+        super().resizeEvent(event)
 
 class AIModernPainter(QMainWindow):
     def __init__(self, show_landmarks=True, use_gpu=False, use_smooth=False, adaptive=False, dual_window=False, use_kia=False):
         super().__init__()
         self.setWindowTitle("AI Modern Virtual Painter - Pro Edition")
-        self.setFixedSize(SCREEN_SIZE[0], SCREEN_SIZE[1])
+        self.resize(SCREEN_SIZE[0], SCREEN_SIZE[1])
         self.adaptive = adaptive
         
         # Dual Window Support
@@ -37,7 +46,7 @@ class AIModernPainter(QMainWindow):
         
         # 1. Video Layer
         self.video_label = QLabel(self)
-        self.video_label.setFixedSize(self.size())
+        self.video_label.setScaledContents(True)
         
         # 2. Drawing Layer
         self.canvas = OverlayCanvas(self)
@@ -100,13 +109,18 @@ class AIModernPainter(QMainWindow):
         
         if hands:
             hand = hands[0]
-            index_pos = QPoint(hand['landmarks'][8][0], hand['landmarks'][8][1])
+            # Internal coordinates (1280x720)
+            ix, iy = hand['landmarks'][8][0], hand['landmarks'][8][1]
+            
+            # Map to Window Coordinates for UI elements (Dynamic Scaling)
+            sw, sh = self.width() / SCREEN_SIZE[0], self.height() / SCREEN_SIZE[1]
+            win_pos = QPoint(int(ix * sw), int(iy * sh))
             
             if state == "MENU_OPENED":
-                self.radial_menu.show_at(index_pos)
+                self.radial_menu.show_at(win_pos)
             elif state == "MENU_ACTIVE":
-                angle, dist = self.gestures.get_current_angle_and_dist((index_pos.x(), index_pos.y()))
-                self.radial_menu.update_state(index_pos, angle)
+                angle, dist = self.gestures.get_current_angle_and_dist((ix, iy))
+                self.radial_menu.update_state(win_pos, angle)
             elif state == "SELECTED":
                 self.radial_menu.hide()
                 if self.gestures.selected_tool:
@@ -127,7 +141,21 @@ class AIModernPainter(QMainWindow):
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         h, w, ch = rgb_frame.shape
         qi = QImage(rgb_frame.data, w, h, ch * w, QImage.Format_RGB888)
-        label.setPixmap(QPixmap.fromImage(qi))
+        pixmap = QPixmap.fromImage(qi)
+        # Scaled contents is on, but we want smooth scaling
+        label.setPixmap(pixmap.scaled(label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
+
+    def resizeEvent(self, event):
+        # Lock 16:9 Aspect Ratio
+        w = event.size().width()
+        h = int(w * 9 / 16)
+        if h != event.size().height():
+            self.resize(w, h)
+        
+        self.video_label.setFixedSize(self.size())
+        self.canvas.setFixedSize(self.size())
+        self.radial_menu.setFixedSize(self.size())
+        super().resizeEvent(event)
 
     def _handle_tool_logic(self, frame, hand):
         x, y = hand['landmarks'][8][:2]
@@ -140,12 +168,15 @@ class AIModernPainter(QMainWindow):
             # Cyan (BGR) 
             if fingers[0] == 0:
                 _, _, _, norm_dist = self.zoom_tool.get_pinch_data(hand)
-                self.brush_thickness = int(np.clip(norm_dist * 50, 2, 20))
+                # Highly Sensitive Mapping: 2px - 80px range
+                self.brush_thickness = int(np.clip((norm_dist - 0.05) * 150, 2, 100) * 0.2)
                 status = f"Size: {self.brush_thickness}"
+                is_drawing = False # Disable drawing while sizing
             else:
                 status = f"Locked: {self.brush_thickness}"
+                is_drawing = drawing_gest
             
-            self.canvas.draw_line(x, y, drawing_gest, tool_name="PAINTER", 
+            self.canvas.draw_line(x, y, is_drawing, tool_name="PAINTER", 
                                  color=(254, 242, 0, 255), thickness=self.brush_thickness)
             # Visual Feedback (Operator only)
             cv2.circle(frame, (x, y), self.brush_thickness//2, (254, 242, 0), 2)
@@ -155,13 +186,16 @@ class AIModernPainter(QMainWindow):
             # Vivid Pink Highlighter (BGR + Alpha)
             if fingers[0] == 0:
                 _, _, _, norm_dist = self.zoom_tool.get_pinch_data(hand)
-                self.brush_thickness = int(np.clip(norm_dist * 50, 2, 40))
+                # Highly Sensitive Mapping: 2px - 80px range
+                self.brush_thickness = int(np.clip((norm_dist - 0.05) * 150, 2, 80) * 0.5)
                 status = f"Highlighter: {self.brush_thickness}"
+                is_drawing = False # Disable drawing while sizing
             else:
                 status = f"Locked: {self.brush_thickness}"
+                is_drawing = drawing_gest
             
             # Semi-transparent alpha (120) for fluorescent effect
-            self.canvas.draw_line(x, y, drawing_gest, tool_name="PAINTER_ALT", 
+            self.canvas.draw_line(x, y, is_drawing, tool_name="PAINTER_ALT", 
                                  color=(128, 0, 255, 120), thickness=self.brush_thickness)
             # Visual Feedback (Operator only)
             cv2.circle(frame, (x, y), self.brush_thickness//2, (128, 0, 255), 2)
