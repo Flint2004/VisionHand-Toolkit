@@ -17,10 +17,11 @@ from features.presentation_tool import PresentationTool
 from utils.theme import SCREEN_SIZE
 
 class AIModernPainter(QMainWindow):
-    def __init__(self, show_landmarks=True):
+    def __init__(self, show_landmarks=True, use_gpu=False, use_smooth=False, adaptive=False):
         super().__init__()
-        self.setWindowTitle("AI Modern Virtual Painter - Radial Edition")
+        self.setWindowTitle("AI Modern Virtual Painter - Pro Edition")
         self.setFixedSize(SCREEN_SIZE[0], SCREEN_SIZE[1])
+        self.adaptive = adaptive
         
         # 1. Video Layer
         self.video_label = QLabel(self)
@@ -33,7 +34,9 @@ class AIModernPainter(QMainWindow):
         self.radial_menu = RadialMenuWidget(self)
         
         # Tools
-        self.vision = VisionEngine(draw_landmarks=show_landmarks)
+        self.vision = VisionEngine(draw_landmarks=show_landmarks, 
+                                   use_gpu=use_gpu, 
+                                   use_smoothing=use_smooth)
         self.gestures = GestureEngine()
         self.keyboard = VirtualKeyboard()
         self.zoom_tool = ZoomTool()
@@ -98,20 +101,22 @@ class AIModernPainter(QMainWindow):
         fingers = hand['fingers']
         
         if self.current_tool == "PAINTER":
-            # Cyan (BGR)
-            is_drawing = (fingers[1] == 1 and fingers[2] == 0)
+            # Cyan (BGR) | Condition: Thumb Closed (1), Index Up (1), Middle Closed (0)
+            is_drawing = (fingers[0] == 1 and fingers[1] == 1 and fingers[2] == 0)
             self.canvas.draw_line(x, y, is_drawing, tool_name="PAINTER", color=(254, 242, 0, 255))
         elif self.current_tool == "PAINTER_ALT":
-            # Vivid Pink (BGR)
-            is_drawing = (fingers[1] == 1 and fingers[2] == 0)
+            # Vivid Pink (BGR) | Condition: Thumb Closed (1), Index Up (1), Middle Closed (0)
+            is_drawing = (fingers[0] == 1 and fingers[1] == 1 and fingers[2] == 0)
             self.canvas.draw_line(x, y, is_drawing, tool_name="PAINTER_ALT", color=(128, 0, 255, 255))
         elif self.current_tool == "KEYBOARD":
             frame = self.keyboard.draw(frame, [hand])
         elif self.current_tool == "MEDIA":
             # Combined Zoom + Presentation
             # 1. Zoom Logic
-            dist, center, is_pinching = self.zoom_tool.get_pinch_data(hand)
-            scale, offset = self.zoom_tool.update(dist, center, is_pinching)
+            raw_dist, center, is_pinching, norm_dist = self.zoom_tool.get_pinch_data(hand)
+            # If adaptive is True, use normalized distance (scaled up) to maintain sensitivity
+            dist_to_use = norm_dist * 150 if self.adaptive else raw_dist
+            scale, offset = self.zoom_tool.update(dist_to_use, center, is_pinching)
             cv2.putText(frame, f"Media Mode | Scale: {scale:.2f}x", 
                         (50, 650), cv2.FONT_HERSHEY_DUPLEX, 0.7, (0, 242, 254), 2)
             
@@ -125,11 +130,17 @@ class AIModernPainter(QMainWindow):
         event.accept()
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="AI Modern Virtual Painter")
-    parser.add_argument("--hide-landmarks", action="store_true", help="Hide hand landmarks and connections")
+    parser = argparse.ArgumentParser(description="AI Modern Virtual Painter - Pro Edition")
+    parser.add_argument("--hide-landmarks", action="store_true")
+    parser.add_argument("--gpu", action="store_true", help="Enable GPU acceleration")
+    parser.add_argument("--smooth", action="store_true", help="Enable OneEuro smoothing")
+    parser.add_argument("--adaptive", action="store_true", help="Enable distance-adaptive thresholds")
     args = parser.parse_args()
 
     app = QApplication(sys.argv)
-    window = AIModernPainter(show_landmarks=not args.hide_landmarks)
+    window = AIModernPainter(show_landmarks=not args.hide_landmarks,
+                             use_gpu=args.gpu,
+                             use_smooth=args.smooth,
+                             adaptive=args.adaptive)
     window.show()
     sys.exit(app.exec())

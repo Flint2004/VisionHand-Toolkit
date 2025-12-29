@@ -34,7 +34,10 @@ class VirtualKeyboard:
                         is_hovered = True
                         # Click logic: Pinch (Thumb + Index distance)
                         dist = self._get_dist(hands[0]['landmarks'][4], hands[0]['landmarks'][8])
-                        if dist < 45: # Pinching (Increased threshold for reliability)
+                        scale = hands[0].get('scale', 100)
+                        
+                        # Normalized pinch threshold (relative to hand size)
+                        if dist < (0.35 * scale): 
                             is_pressed = True
                             self._on_key_press(key)
 

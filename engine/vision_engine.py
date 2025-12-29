@@ -5,9 +5,17 @@ from mediapipe.tasks.python import vision
 import numpy as np
 import time
 
+from utils.filters import LandmarkSmoother
+
 class VisionEngine:
-    def __init__(self, model_path="hand_landmarker.task", draw_landmarks=True):
-        base_options = python.BaseOptions(model_asset_path=model_path)
+    def __init__(self, model_path="hand_landmarker.task", draw_landmarks=True, use_gpu=False, use_smoothing=False):
+        self.use_smoothing = use_smoothing
+        self.smoother = LandmarkSmoother() if use_smoothing else None
+        
+        base_options = python.BaseOptions(
+            model_asset_path=model_path,
+            delegate=python.BaseOptions.Delegate.GPU if use_gpu else python.BaseOptions.Delegate.CPU
+        )
         options = vision.HandLandmarkerOptions(
             base_options=base_options,
             running_mode=vision.RunningMode.VIDEO,
@@ -37,10 +45,22 @@ class VisionEngine:
         if result.hand_landmarks:
             for i, (landmarks, handedness) in enumerate(zip(result.hand_landmarks, result.handedness)):
                 lms = [(int(lm.x * w), int(lm.y * h), lm.z) for lm in landmarks]
+                
+                # Apply Smoothing
+                if self.use_smoothing and self.smoother:
+                    lms = self.smoother.smooth(lms)
+                
+                # Calculate Adaptive Scale (Normalized Unit: 0 to 9 distance)
+                # p0: Wrist, p9: Middle Finger Root
+                p0 = np.array(lms[0][:2])
+                p9 = np.array(lms[9][:2])
+                scale = np.linalg.norm(p0 - p9)
+
                 hand = {
                     'type': handedness[0].category_name,
                     'landmarks': lms,
-                    'raw_landmarks': landmarks
+                    'raw_landmarks': landmarks,
+                    'scale': scale # Base unit for normalization
                 }
                 hand['fingers'] = self._get_fingers(lms, hand['type'])
                 hands_data.append(hand)

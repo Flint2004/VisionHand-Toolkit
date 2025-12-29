@@ -14,13 +14,14 @@ class ZoomTool:
         p1 = np.array(hand['landmarks'][4][:2]) # Thumb
         p2 = np.array(hand['landmarks'][8][:2]) # Index
         
-        dist = np.linalg.norm(p1 - p2)
-        center = (p1 + p2) / 2
+        raw_dist = np.linalg.norm(p1 - p2)
+        # Normalize distance based on hand scale
+        scale = hand.get('scale', 100)
+        norm_dist = raw_dist / scale
         
-        # Pinch gesture: Thumb + Index up, OTHERS CLOSED [1, 1, 0, 0, 0]
-        # Using [1, 1, 0, 0, 0] strictly for deconfliction
+        center = (p1 + p2) / 2
         is_pinching = (hand['fingers'] == [1, 1, 0, 0, 0])
-        return dist, center, is_pinching
+        return raw_dist, center, is_pinching, norm_dist
 
     def update(self, dist, center, is_pinching):
         if is_pinching:

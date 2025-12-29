@@ -50,7 +50,7 @@ class GestureEngine:
             else:
                 # Gesture released -> Selection confirmed
                 self.menu_active = False
-                selection = self._calculate_selection(index_pos)
+                selection = self._calculate_selection(index_pos, hand_scale=hand.get('scale'))
                 self.selected_tool = selection
                 self._reset_trigger()
                 return "SELECTED"
@@ -61,14 +61,19 @@ class GestureEngine:
     def _reset_trigger(self):
         self.trigger_start_time = None
 
-    def _calculate_selection(self, current_pos):
+    def _calculate_selection(self, current_pos, hand_scale=None):
         if self.menu_center is None: return None
         
         dx = current_pos[0] - self.menu_center[0]
         dy = current_pos[1] - self.menu_center[1]
         dist = np.hypot(dx, dy)
         
-        if dist < 50: return None # Deadzone
+        # Adaptive Thresholding: Use hand scale to normalize distances
+        # Default scale is around 100-150px. Normalized deadzone ~ 0.4 * scale.
+        unit = hand_scale if hand_scale else 100
+        deadzone = 0.4 * unit
+        
+        if dist < deadzone: return None 
         
         angle = np.degrees(np.arctan2(dy, dx)) % 360
         
