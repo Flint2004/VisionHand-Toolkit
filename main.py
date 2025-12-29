@@ -56,6 +56,7 @@ class AIModernPainter(QMainWindow):
         
         # App State
         self.current_tool = "PAINTER"
+        self.brush_thickness = 10
         self.cap = cv2.VideoCapture(0)
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, SCREEN_SIZE[0])
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, SCREEN_SIZE[1])
@@ -115,7 +116,7 @@ class AIModernPainter(QMainWindow):
                 frame = self._handle_tool_logic(frame, hand)
         
         # 3. Localized Clearing (Only in Painter modes, clears specific layer)
-        if hands and hands[0]['fingers'] == [1, 1, 1, 1, 1]:
+        if hands and hands[0]['fingers'] == [0, 1, 1, 1, 1]:
             if self.current_tool in ["PAINTER", "PAINTER_ALT"]:
                 self.canvas.clear_layer(self.current_tool)
 
@@ -132,14 +133,39 @@ class AIModernPainter(QMainWindow):
         x, y = hand['landmarks'][8][:2]
         fingers = hand['fingers']
         
+        # Consistent Drawing Condition: Index Up, Middle Down (Thumb controls thickness mode)
+        drawing_gest = (fingers[1] == 1 and fingers[2] == 0)
+        
         if self.current_tool == "PAINTER":
-            # Cyan (BGR) | Condition: Thumb Closed (1), Index Up (1), Middle Closed (0)
-            is_drawing = (fingers[0] == 1 and fingers[1] == 1 and fingers[2] == 0)
-            self.canvas.draw_line(x, y, is_drawing, tool_name="PAINTER", color=(254, 242, 0, 255))
+            # Cyan (BGR) 
+            if fingers[0] == 0:
+                _, _, _, norm_dist = self.zoom_tool.get_pinch_data(hand)
+                self.brush_thickness = int(np.clip(norm_dist * 50, 2, 20))
+                status = f"Size: {self.brush_thickness}"
+            else:
+                status = f"Locked: {self.brush_thickness}"
+            
+            self.canvas.draw_line(x, y, drawing_gest, tool_name="PAINTER", 
+                                 color=(254, 242, 0, 255), thickness=self.brush_thickness)
+            # Visual Feedback (Operator only)
+            cv2.circle(frame, (x, y), self.brush_thickness//2, (254, 242, 0), 2)
+            cv2.putText(frame, status, (x + 20, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (254, 242, 0), 1)
+            
         elif self.current_tool == "PAINTER_ALT":
-            # Vivid Pink (BGR) | Condition: Thumb Closed (1), Index Up (1), Middle Closed (0)
-            is_drawing = (fingers[0] == 1 and fingers[1] == 1 and fingers[2] == 0)
-            self.canvas.draw_line(x, y, is_drawing, tool_name="PAINTER_ALT", color=(128, 0, 255, 255))
+            # Vivid Pink Highlighter (BGR + Alpha)
+            if fingers[0] == 0:
+                _, _, _, norm_dist = self.zoom_tool.get_pinch_data(hand)
+                self.brush_thickness = int(np.clip(norm_dist * 50, 2, 40))
+                status = f"Highlighter: {self.brush_thickness}"
+            else:
+                status = f"Locked: {self.brush_thickness}"
+            
+            # Semi-transparent alpha (120) for fluorescent effect
+            self.canvas.draw_line(x, y, drawing_gest, tool_name="PAINTER_ALT", 
+                                 color=(128, 0, 255, 120), thickness=self.brush_thickness)
+            # Visual Feedback (Operator only)
+            cv2.circle(frame, (x, y), self.brush_thickness//2, (128, 0, 255), 2)
+            cv2.putText(frame, status, (x + 20, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (128, 0, 255), 1)
         elif self.current_tool == "KEYBOARD":
             frame = self.keyboard.draw(frame, [hand])
         elif self.current_tool == "MEDIA":

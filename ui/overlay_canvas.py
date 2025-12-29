@@ -20,7 +20,7 @@ class OverlayCanvas(QWidget):
         self.xp, self.yp = 0, 0
         self.thickness = 10
 
-    def draw_line(self, x, y, is_drawing, tool_name="PAINTER", color=(254, 242, 0, 255)):
+    def draw_line(self, x, y, is_drawing, tool_name="PAINTER", color=(254, 242, 0, 255), thickness=None):
         """
         Draws onto the specified tool's layer.
         """
@@ -29,7 +29,8 @@ class OverlayCanvas(QWidget):
                 self.xp, self.yp = x, y
             
             target_layer = self.layers.get(tool_name, self.layers["PAINTER"])
-            cv2.line(target_layer, (self.xp, self.yp), (x, y), color, self.thickness)
+            draw_thickness = thickness if thickness is not None else self.thickness
+            cv2.line(target_layer, (self.xp, self.yp), (x, y), color, draw_thickness)
             
             self.xp, self.yp = x, y
             self.update()
