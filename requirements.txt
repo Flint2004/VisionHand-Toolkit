@@ -1,0 +1,7 @@
+opencv-python
+mediapipe==0.10.5
+cvzone
+PySide6
+python-pptx
+numpy
+requests
